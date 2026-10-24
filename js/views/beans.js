@@ -103,7 +103,9 @@ export async function beansView() {
     root.appendChild(h('div', { class: 'empty' },
       h('p', { class: 'empty-title' }, 'No beans yet'),
       h('p', { class: 'muted' }, 'Add the coffee you are brewing so each recipe is tied to the bean, roaster and roast.'),
-      btn('Add a bean', () => navigate('/bean/new'), 'primary')));
+      // replace (not navigate): so the Beans list isn't a history step between
+      // Brews and this form — one back-press from Add bean goes straight home.
+      btn('Add a bean', () => replace('/bean/new'), 'primary')));
   }
   const beans = [...D.store.beans].sort((a, b) => {
     const la = D.store.brews.filter((x) => x.beanId === a.id).sort(D.byDateDesc)[0];
@@ -122,7 +124,8 @@ export async function beansView() {
   }
   return {
     title: 'Beans', nav: 'beans', el: root,
-    actions: [h('a', { class: 'btn small primary', href: '#/bean/new' }, 'Add bean')],
+    // onclick + replace, same reasoning as the empty-state button above.
+    actions: [h('a', { class: 'btn small primary', href: '#/bean/new', onclick: (e) => { e.preventDefault(); replace('/bean/new'); } }, 'Add bean')],
   };
 }
 function lb_fallback(b) { return b.createdAt || ''; }
@@ -152,7 +155,7 @@ export async function beanFormView({ id }) {
   build();
 
   return {
-    title: bean ? 'Edit bean' : 'New bean', back: bean ? '#/bean/' + bean.id : '#/beans', hideNav: true, nav: 'beans', el: wrap,
+    title: bean ? 'Edit bean' : 'New bean', back: bean ? '#/bean/' + bean.id : '#/', hideNav: true, nav: 'beans', el: wrap,
     cleanup() { flush(); },
   };
 }
