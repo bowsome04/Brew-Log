@@ -306,6 +306,7 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
         if (node && node.level > 1) {
           if (sel.has(node.id)) sel.delete(node.id); else sel.add(node.id);
           if (onChange) onChange(new Set(sel));
+          setFocus(null); // back to the category overview, ready for the next pick
         }
         render();
       }
