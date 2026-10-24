@@ -22,7 +22,10 @@ export function recipeSummary(b) {
   const kind = D.methodKind(b.method);
   const r = ratioOf(b.dose, b.water);
   const bits = [];
-  if (b.brewStyle === 'iced') bits.push('Iced' + (b.iceG ? ' (' + fmtNum(b.iceG, 0) + 'g ice)' : ''));
+  if (b.brewStyle === 'iced') {
+    const ice = [b.iceBedG ? fmtNum(b.iceBedG, 0) + 'g bed' : null, b.iceG ? fmtNum(b.iceG, 0) + 'g server' : null].filter(Boolean);
+    bits.push('Iced' + (ice.length ? ' (' + ice.join(' + ') + ' ice)' : ''));
+  }
   if (b.dose || b.water) {
     bits.push(kind === 'espresso'
       ? `${fmtNum(b.dose)} g in → ${fmtNum(b.water)} g out${r ? ' (' + fmtRatio(r) + ')' : ''}`
@@ -152,7 +155,8 @@ export async function brewDetailView({ id }) {
     h('h3', null, 'Recipe'),
     kv([
       ['Brew style', kind === 'percolation' ? BREW_STYLE_LABEL[b.brewStyle || 'hot'] : ''],
-      ['Ice', b.brewStyle === 'iced' && b.iceG != null ? fmtNum(b.iceG, 0) + ' g' : ''],
+      ['Ice on bed', b.brewStyle === 'iced' && b.iceBedG != null ? fmtNum(b.iceBedG, 0) + ' g' : ''],
+      ['Ice in server', b.brewStyle === 'iced' && b.iceG != null ? fmtNum(b.iceG, 0) + ' g' : ''],
       [kind === 'espresso' ? 'Dose in' : 'Coffee', b.dose != null ? fmtNum(b.dose) + ' g' : ''],
       [kind === 'espresso' ? 'Yield out' : 'Water', b.water != null ? fmtNum(b.water) + ' g' : ''],
       ['Ratio', r ? fmtRatio(r) : ''],
@@ -196,7 +200,7 @@ export async function brewDetailView({ id }) {
 
 // ---------------------------------------------------------------- form
 
-const RECIPE_KEYS = ['dose', 'water', 'temp', 'grinderId', 'clicks', 'grindFeel', 'brewStyle', 'iceG', 'bloomWater', 'bloomTime', 'pours', 'totalTime', 'drawStart', 'preinfusion', 'pressure', 'procedure'];
+const RECIPE_KEYS = ['dose', 'water', 'temp', 'grinderId', 'clicks', 'grindFeel', 'brewStyle', 'iceBedG', 'iceG', 'bloomWater', 'bloomTime', 'pours', 'totalTime', 'drawStart', 'preinfusion', 'pressure', 'procedure'];
 const RECIPE_DEFAULT = { grinderId: '', grindFeel: '', brewStyle: 'hot', procedure: '', pours: [] };
 const BREW_STYLE_LABEL = { hot: 'Hot', iced: 'Japanese (iced)' };
 const BAL_SHORT = ['Sour', 'Mild sour', 'Balanced', 'Mild bitter', 'Bitter'];
@@ -214,7 +218,7 @@ function blankBrew(beanId) {
     id: null, date: new Date().toISOString(),
     beanId: beanId || (last ? last.beanId : ''), method: last ? last.method : 'V60',
     dose: null, water: null, temp: null, grinderId: last ? last.grinderId : '', clicks: null, grindFeel: '',
-    brewStyle: 'hot', iceG: null,
+    brewStyle: 'hot', iceBedG: null, iceG: null,
     bloomWater: null, bloomTime: null, pours: [], totalTime: null, drawStart: null, preinfusion: null, pressure: null,
     procedure: '', rating: null, verdict: '', balance: null, strength: null, taste: [], notes: '',
   };
@@ -412,7 +416,9 @@ export async function brewFormView(params) {
         [{ value: 'hot', label: 'Hot' }, { value: 'iced', label: 'Japanese (iced)' }],
         b.brewStyle || 'hot', (v) => { update('brewStyle', v || 'hot'); renderRecipe(); }, 'Hot or Japanese iced brew')));
       if (b.brewStyle === 'iced') {
-        parts.push(numField('Ice in server (g)', 'iceG', { step: 1, hint: 'Weighed into the server before or during the pour' }));
+        parts.push(h('div', { class: 'grid2' },
+          numField('Ice on bed (g)', 'iceBedG', { step: 1, hint: 'Placed in the dripper before brewing' }),
+          numField('Ice in server (g)', 'iceG', { step: 1, hint: 'Weighed into the server before or during the pour' })));
       }
     }
     parts.push(

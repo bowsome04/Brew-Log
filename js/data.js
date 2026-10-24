@@ -191,7 +191,7 @@ function csvCell(v) {
 
 export function brewsToCsv() {
   const head = ['Date', 'Bean', 'Roaster', 'Origin', 'Variety', 'Process', 'Roast level', 'Roast date', 'Days off roast',
-    'Method', 'Brew style', 'Ice (g)', 'Dose (g)', 'Water or yield (g)', 'Ratio (1:x)', 'Temp (C)', 'Grinder', 'Setting', 'Grind feel',
+    'Method', 'Brew style', 'Ice on bed (g)', 'Ice in server (g)', 'Dose (g)', 'Water or yield (g)', 'Ratio (1:x)', 'Temp (C)', 'Grinder', 'Setting', 'Grind feel',
     'Bloom water (g)', 'Bloom time (s)', 'Pours (start s : water g)', 'Total time (s)', 'Pouring done at (s)',
     'Pre-infusion (s)', 'Pressure (bar)', 'Score', 'Verdict', 'Balance', 'Strength', 'Taste', 'Procedure', 'Notes'];
   const rows = brewsSorted().map((b) => {
@@ -200,7 +200,7 @@ export function brewsToCsv() {
     const r = ratioOf(b.dose, b.water);
     return [
       b.date, bean.name, bean.roaster, bean.country, bean.variety, bean.process, bean.roastLevel, bean.roastDate, daysOff(b),
-      b.method, b.brewStyle === 'iced' ? 'Iced' : 'Hot', b.brewStyle === 'iced' ? b.iceG : '',
+      b.method, b.brewStyle === 'iced' ? 'Iced' : 'Hot', b.brewStyle === 'iced' ? b.iceBedG : '', b.brewStyle === 'iced' ? b.iceG : '',
       b.dose, b.water, r ? fmtNum(r, 2) : '', b.temp, g ? g.name : '', b.clicks, b.grindFeel,
       b.bloomWater, b.bloomTime, (b.pours || []).map((p) => (p.t ?? '') + ':' + (p.g ?? '')).join(' | '),
       b.totalTime, b.drawStart, b.preinfusion, b.pressure, b.rating, b.verdict ? VERDICT[b.verdict] : '',

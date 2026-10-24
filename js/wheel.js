@@ -62,11 +62,38 @@ function label(lines, r, mid, avail, arcW, fill, weight = 500, maxFs = 12) {
 
 const slotsOf = (cat) => cat.children.reduce((n, c) => n + Math.max(1, c.children.length), 0);
 
+// Shared ring radii, used both for drawing (zoomed()) and for the drag
+// gesture's hit-testing (overview category ring ends at 126; zoomed sub-ring
+// 46-118, leaf-ring 118-196; centre back-button is r < 46).
+const R_CAT = 126, R2A = 46, R2B = 118, R3B = 196, R_DRILL = 132;
+
+function angleAt(dx, dy) { return (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360; }
+function categoryAtAngle(angle) { return WHEEL[Math.min(8, Math.floor(angle / 40))]; }
+// Mirrors zoomed()'s own layout math, so a finger position maps to exactly
+// the node drawn under it.
+function nodeAtZoomed(cat, angle, radius) {
+  const per = 360 / slotsOf(cat);
+  let a = 0;
+  for (const sub of cat.children) {
+    const n = Math.max(1, sub.children.length);
+    const a1 = a + n * per;
+    if (angle < a1 || sub === cat.children[cat.children.length - 1]) {
+      if (!sub.children.length || radius < R2B) return sub;
+      const j = Math.min(sub.children.length - 1, Math.floor((angle - a) / per));
+      return sub.children[j];
+    }
+    a = a1;
+  }
+  return null;
+}
+
 export function createWheel({ mode = 'select', selected = new Set(), counts = new Map(), onChange, onPick, onFocus } = {}) {
   const svg = s('svg', { viewBox: '0 0 400 400', class: 'wheel', role: 'group', 'aria-label': 'Flavour wheel' });
   let focus = null;
   let sel = selected;
   let cnt = counts;
+  let hoverCat = null;  // category armed while roaming the overview, not yet zoomed
+  let hoverNode = null; // sub/leaf armed while roaming a zoomed category
 
   const maxCount = () => Math.max(1, ...cnt.values());
   const catTotal = new Map();
@@ -91,11 +118,11 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
     return mix('#ffffff', base, 0.22 + 0.78 * (n / top));
   }
 
-  function wedge(node, r0, r1, a0, a1, { onTap, interactive = true, name }) {
+  function wedge(node, r0, r1, a0, a1, { onTap, interactive = true, name, armed = false }) {
     const fill = fillFor(node);
     const isSel = mode === 'select' && sel.has(node.id);
     const p = s('path', {
-      d: arcPath(r0, r1, a0, a1), fill, class: 'wedge' + (isSel ? ' on' : ''),
+      d: arcPath(r0, r1, a0, a1), fill, class: 'wedge' + (isSel ? ' on' : '') + (armed ? ' armed' : ''),
       'data-id': node.id,
       role: interactive ? 'button' : null, tabindex: interactive ? '0' : null,
       'aria-label': interactive ? `${name || node.name}${isSel ? ', selected' : ''}` : null,
@@ -128,7 +155,7 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
     WHEEL.forEach((cat, i) => {
       const a0 = i * 40, a1 = a0 + 40;
       const go = () => setFocus(cat.name);
-      const g = s('g', { class: 'cat-group' });
+      const g = s('g', { class: 'cat-group' + (hoverCat === cat.name ? ' armed' : '') });
       // decorative sub / descriptor rings
       const per = 40 / slotsOf(cat);
       let a = a0;
@@ -171,7 +198,7 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
     const kids = [];
     const slots = slotsOf(cat);
     const per = 360 / slots;
-    const R2a = 46, R2b = 118, R3b = 196;
+    const R2a = R2A, R2b = R2B, R3b = R3B;
     let a = 0;
     for (const sub of cat.children) {
       const n = Math.max(1, sub.children.length);
@@ -186,16 +213,16 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
         return l;
       };
       if (!sub.children.length) {
-        kids.push(wedge(sub, R2a, R3b, a0, a1, { onTap: () => tap(sub) }));
+        kids.push(wedge(sub, R2a, R3b, a0, a1, { onTap: () => tap(sub), armed: hoverNode === sub.id }));
         const arcW = ((a1 - a0) * Math.PI / 180) * 120;
         kids.push(label(lines2(sub), (R2a + R3b) / 2 + 6, mid, R3b - R2a - 26, arcW, fillFor(sub), 600, 13));
       } else {
-        kids.push(wedge(sub, R2a, R2b, a0, a1, { onTap: () => tap(sub) }));
+        kids.push(wedge(sub, R2a, R2b, a0, a1, { onTap: () => tap(sub), armed: hoverNode === sub.id }));
         const arcW2 = ((a1 - a0) * Math.PI / 180) * 82;
         kids.push(label(lines2(sub), 82, mid, R2b - R2a - 12, Math.min(arcW2, 40), fillFor(sub), 650, 12));
         sub.children.forEach((leaf, j) => {
           const l0 = a0 + j * per, l1 = l0 + per;
-          kids.push(wedge(leaf, R2b, R3b, l0, l1, { onTap: () => tap(leaf) }));
+          kids.push(wedge(leaf, R2b, R3b, l0, l1, { onTap: () => tap(leaf), armed: hoverNode === leaf.id }));
           const arcW3 = (per * Math.PI / 180) * 157;
           kids.push(label(lines2(leaf), 157, (l0 + l1) / 2, R3b - R2b - 10, arcW3, fillFor(leaf), 500, 12));
         });
@@ -223,46 +250,86 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
     svg.replaceChildren(...(cat ? zoomed(cat) : overview()));
   }
 
-  // Touch drag-select: hold and drag a finger across the wheel instead of
-  // tapping each level. Dragging into a category zooms into it, then
-  // dragging over its sub/leaf wedges selects them, all in one stroke.
-  // data-id-less elements (the centre "back" circle) are left to their own
-  // click handler, so this never blocks backing out.
+  // Touch marking-menu: hold a finger down and roam it, nothing commits
+  // until release. At the overview ring, angle previews a category; push
+  // the finger out past R_DRILL and it zooms in live, under the same
+  // finger. Once zoomed, roam the sub/leaf rings to preview each one; pull
+  // back past the centre (r < R2A) to zoom back out live, still held, so
+  // another category can be reached without lifting. Releasing while
+  // zoomed toggles whatever's currently previewed; releasing at the
+  // overview (or a plain tap with no real drag) zooms in, same as a click.
+  // Releasing dead-centre (r < 20) cancels with no change.
   if (mode === 'select') {
-    let dragId = null;
-    const hitNode = (x, y) => {
-      const el = document.elementFromPoint(x, y);
-      const id = el && el.getAttribute && el.getAttribute('data-id');
-      return id ? NODE.get(id) : null;
+    let dragging = false;
+
+    const toLocal = (clientX, clientY) => {
+      const rect = svg.getBoundingClientRect();
+      return [(clientX - rect.left) / rect.width * 400, (clientY - rect.top) / rect.height * 400];
     };
-    const hoverAt = (x, y) => {
-      const node = hitNode(x, y);
-      if (!node || node.id === dragId) return;
-      dragId = node.id;
+
+    function roamTo(clientX, clientY) {
+      const [x, y] = toLocal(clientX, clientY);
+      const dx = x - CX, dy = y - CY;
+      const radius = Math.hypot(dx, dy);
+      const angle = angleAt(dx, dy);
       if (!focus) {
-        if (node.cat !== focus) setFocus(node.cat);
-      } else if (node.cat === focus && node.level > 1 && !sel.has(node.id)) {
-        sel.add(node.id);
-        if (onChange) onChange(new Set(sel));
+        const cat = categoryAtAngle(angle);
+        if (radius > R_DRILL) {
+          hoverCat = null; hoverNode = null;
+          setFocus(cat.name);
+          roamTo(clientX, clientY); // resolve the sub/leaf hover at the new depth immediately
+          return;
+        }
+        if (hoverCat !== cat.name) { hoverCat = cat.name; render(); }
+      } else if (radius < R2A) {
+        hoverNode = null;
+        setFocus(null);
+        roamTo(clientX, clientY); // resolve the category hover back at the overview immediately
+      } else {
+        const cat = WHEEL.find((c) => c.name === focus);
+        const node = cat && nodeAtZoomed(cat, angle, radius);
+        if (node && hoverNode !== node.id) { hoverNode = node.id; render(); }
+      }
+    }
+
+    function commitAt(clientX, clientY) {
+      const [x, y] = toLocal(clientX, clientY);
+      const dx = x - CX, dy = y - CY;
+      const radius = Math.hypot(dx, dy);
+      hoverCat = null;
+      if (radius < 20) { hoverNode = null; render(); return; } // dead centre: cancel
+      if (!focus) {
+        setFocus(categoryAtAngle(angleAt(dx, dy)).name); // plain tap or release before drilling in
+      } else if (hoverNode) {
+        const node = NODE.get(hoverNode);
+        hoverNode = null;
+        if (node && node.level > 1) {
+          if (sel.has(node.id)) sel.delete(node.id); else sel.add(node.id);
+          if (onChange) onChange(new Set(sel));
+        }
         render();
       }
-    };
+    }
+
     svg.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'mouse') return;
-      const node = hitNode(e.clientX, e.clientY);
-      if (!node) return;
       e.preventDefault();
-      svg.setPointerCapture(e.pointerId);
-      dragId = null;
-      hoverAt(e.clientX, e.clientY);
+      try { svg.setPointerCapture(e.pointerId); } catch { /* best effort */ }
+      dragging = true;
+      roamTo(e.clientX, e.clientY);
     });
     svg.addEventListener('pointermove', (e) => {
-      if (e.pointerType === 'mouse' || !e.buttons) return;
-      hoverAt(e.clientX, e.clientY);
+      if (!dragging || e.pointerType === 'mouse') return;
+      roamTo(e.clientX, e.clientY);
     });
-    const endDrag = () => { dragId = null; };
-    svg.addEventListener('pointerup', endDrag);
-    svg.addEventListener('pointercancel', endDrag);
+    svg.addEventListener('pointerup', (e) => {
+      if (!dragging || e.pointerType === 'mouse') return;
+      dragging = false;
+      commitAt(e.clientX, e.clientY);
+    });
+    svg.addEventListener('pointercancel', () => {
+      dragging = false; hoverCat = null; hoverNode = null; render();
+    });
   }
 
   render();
