@@ -261,6 +261,16 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
   // Releasing dead-centre (r < 20) cancels with no change.
   if (mode === 'select') {
     let dragging = false;
+    let suppressClick = false;
+
+    // A touch drag still ends in a synthetic "click" on whatever wedge is
+    // now under the finger (post-release re-render can put a different
+    // wedge there, e.g. an overview category wedge right after we've
+    // zoomed back out) - swallow it in the capture phase so it can never
+    // re-trigger that wedge's own onTap and undo what the drag just did.
+    svg.addEventListener('click', (e) => {
+      if (suppressClick) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
 
     const toLocal = (clientX, clientY) => {
       const rect = svg.getBoundingClientRect();
@@ -317,6 +327,7 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
       e.preventDefault();
       try { svg.setPointerCapture(e.pointerId); } catch { /* best effort */ }
       dragging = true;
+      suppressClick = true;
       roamTo(e.clientX, e.clientY);
     });
     svg.addEventListener('pointermove', (e) => {
@@ -327,9 +338,11 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
       if (!dragging || e.pointerType === 'mouse') return;
       dragging = false;
       commitAt(e.clientX, e.clientY);
+      setTimeout(() => { suppressClick = false; }, 400);
     });
     svg.addEventListener('pointercancel', () => {
       dragging = false; hoverCat = null; hoverNode = null; render();
+      setTimeout(() => { suppressClick = false; }, 400);
     });
   }
 
