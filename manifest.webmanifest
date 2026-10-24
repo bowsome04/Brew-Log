@@ -1,0 +1,22 @@
+{
+  "id": "./",
+  "name": "Brew Log",
+  "short_name": "Brew Log",
+  "description": "Log coffee brewing recipes, flavours and what worked. Everything stays on your phone.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef0ec",
+  "theme_color": "#1f6b5b",
+  "categories": ["food", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "New brew", "short_name": "New brew", "url": "./#/brew/new", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Insights", "short_name": "Insights", "url": "./#/insights", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
