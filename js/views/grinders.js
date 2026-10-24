@@ -1,16 +1,33 @@
-import { h, field, selectEl, btn, openSheet, confirmSheet, toast } from '../util.js';
+import { h, field, selectEl, btn, openSheet, confirmSheet, toast, debounce } from '../util.js';
 import * as D from '../data.js';
 
 export function grinderUnit(g) { return (g && g.unit) || 'clicks'; }
 
+// Same draft-on-dismiss safety net as beans: keeps a half-filled "new
+// grinder" sheet from losing its content if it's closed before saving.
+const GRINDER_DRAFT_KEY = 'bl.draft.grinder';
+const loadGrinderDraft = () => { try { return JSON.parse(localStorage.getItem(GRINDER_DRAFT_KEY)) || null; } catch { return null; } };
+const saveGrinderDraft = (g) => { try { localStorage.setItem(GRINDER_DRAFT_KEY, JSON.stringify(g)); } catch { /* storage full or blocked */ } };
+const clearGrinderDraft = () => { try { localStorage.removeItem(GRINDER_DRAFT_KEY); } catch { /* ignore */ } };
+const hasGrinderContent = (g) => !!(g.name || (g.notes && g.notes.trim()));
+
 export function grinderFormSheet(grinder, onSaved) {
-  const g = grinder ? { ...grinder } : { name: '', kind: 'Hand', unit: 'clicks', notes: '' };
-  const name = h('input', { type: 'text', value: g.name, placeholder: 'e.g. Comandante C40 MK4', autocomplete: 'off', oninput: (e) => { g.name = e.target.value; } });
-  const kind = selectEl([{ value: 'Hand', label: 'Hand grinder' }, { value: 'Electric', label: 'Electric grinder' }], g.kind, (v) => { g.kind = v; });
+  let restored = false;
+  let g;
+  if (grinder) g = { ...grinder };
+  else {
+    const d = loadGrinderDraft();
+    if (d && hasGrinderContent(d)) { g = d; restored = true; } else g = { name: '', kind: 'Hand', unit: 'clicks', notes: '' };
+  }
+  let finished = false;
+  const persist = debounce(() => { if (!grinder && !finished) saveGrinderDraft(g); }, 350);
+
+  const name = h('input', { type: 'text', value: g.name, placeholder: 'e.g. Comandante C40 MK4', autocomplete: 'off', oninput: (e) => { g.name = e.target.value; persist(); } });
+  const kind = selectEl([{ value: 'Hand', label: 'Hand grinder' }, { value: 'Electric', label: 'Electric grinder' }], g.kind, (v) => { g.kind = v; persist(); });
   const unit = selectEl([
     { value: 'clicks', label: 'clicks' }, { value: 'notches', label: 'notches' },
-    { value: 'setting', label: 'setting number' }, { value: 'turns', label: 'turns' }], g.unit || 'clicks', (v) => { g.unit = v; });
-  const notes = h('textarea', { rows: 3, placeholder: 'Zero point, burr set, how you count (e.g. 0 = burrs touching)', oninput: (e) => { g.notes = e.target.value; } }, g.notes || '');
+    { value: 'setting', label: 'setting number' }, { value: 'turns', label: 'turns' }], g.unit || 'clicks', (v) => { g.unit = v; persist(); });
+  const notes = h('textarea', { rows: 3, placeholder: 'Zero point, burr set, how you count (e.g. 0 = burrs touching)', oninput: (e) => { g.notes = e.target.value; persist(); } }, g.notes || '');
   const content = h('form', {
     class: 'form-stack',
     onsubmit: async (e) => {
@@ -18,6 +35,8 @@ export function grinderFormSheet(grinder, onSaved) {
       if (!g.name.trim()) { toast('Give the grinder a name'); name.focus(); return; }
       g.name = g.name.trim();
       const saved = await D.saveGrinder(g);
+      finished = true;
+      clearGrinderDraft();
       sheet.close();
       if (onSaved) onSaved(saved);
     },
@@ -26,7 +45,11 @@ export function grinderFormSheet(grinder, onSaved) {
     h('div', { class: 'grid2' }, field('Type', kind), field('Setting counted in', unit)),
     field('Notes (optional)', notes),
     h('div', { class: 'row-actions' }, btn('Cancel', () => sheet.close(), 'ghost'), h('button', { type: 'submit', class: 'btn primary' }, 'Save grinder')));
-  const sheet = openSheet({ title: grinder ? 'Edit grinder' : 'New grinder', content });
+  const sheet = openSheet({
+    title: grinder ? 'Edit grinder' : 'New grinder', content,
+    onClose: () => { if (!grinder && !finished) saveGrinderDraft(g); },
+  });
+  if (restored) toast('Restored your unsaved grinder');
   setTimeout(() => name.focus(), 50);
   return sheet;
 }

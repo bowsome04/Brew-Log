@@ -1,4 +1,4 @@
-import { h, field, selectEl, chip, btn, openSheet, confirmSheet, toast, fmtDate, fmtNum, fmtRatio, ratioOf, daysOffRoast } from '../util.js';
+import { h, field, selectEl, chip, btn, openSheet, confirmSheet, toast, debounce, fmtDate, fmtNum, fmtRatio, ratioOf, daysOffRoast } from '../util.js';
 import * as D from '../data.js';
 import { navigate, replace } from '../router.js';
 import { brewCard, recipeSummary } from './brews.js';
@@ -13,12 +13,31 @@ export function beanLabel(bean) {
   return bean ? bean.name + (bean.roaster ? ' · ' + bean.roaster : '') : 'Unknown bean';
 }
 
-export function buildBeanForm(bean, { onSave, onCancel }) {
-  const b = bean ? { ...bean } : { name: '', roaster: '', country: '', region: '', species: 'Arabica', variety: '', process: '', roastLevel: '', roastFor: '', roastDate: '', altitude: '', roasterNotes: '', notes: '' };
-  const text = (key, ph, extra = {}) => h('input', { type: 'text', value: b[key] || '', placeholder: ph || '', autocomplete: 'off', oninput: (e) => { b[key] = e.target.value; }, ...extra });
+// A half-filled "new bean" form is kept here so leaving the page or sheet
+// (back button, nav tap, accidental dismiss) before saving doesn't lose it.
+const BEAN_DRAFT_KEY = 'bl.draft.bean';
+const loadBeanDraft = () => { try { return JSON.parse(localStorage.getItem(BEAN_DRAFT_KEY)) || null; } catch { return null; } };
+const saveBeanDraft = (b) => { try { localStorage.setItem(BEAN_DRAFT_KEY, JSON.stringify(b)); } catch { /* storage full or blocked */ } };
+const clearBeanDraft = () => { try { localStorage.removeItem(BEAN_DRAFT_KEY); } catch { /* ignore */ } };
+const hasBeanContent = (b) => !!(b.name || b.roaster || b.country || b.region || b.variety || b.process || b.roastLevel || b.roastFor || b.roastDate || b.altitude || b.roasterNotes || b.notes);
+const blankBean = () => ({ name: '', roaster: '', country: '', region: '', species: 'Arabica', variety: '', process: '', roastLevel: '', roastFor: '', roastDate: '', altitude: '', roasterNotes: '', notes: '' });
+
+export function buildBeanForm(bean, { onSave, onCancel, useDraft = false }) {
+  let restored = false;
+  let b;
+  if (bean) b = { ...bean };
+  else {
+    const d = useDraft ? loadBeanDraft() : null;
+    if (d && hasBeanContent(d)) { b = d; restored = true; } else b = blankBean();
+  }
+  let finished = false;
+  const persist = debounce(() => { if (useDraft && !finished) saveBeanDraft(b); }, 350);
+  const touch = (key, v) => { b[key] = v; persist(); };
+
+  const text = (key, ph, extra = {}) => h('input', { type: 'text', value: b[key] || '', placeholder: ph || '', autocomplete: 'off', oninput: (e) => touch(key, e.target.value), ...extra });
   const listInput = (key, options, ph) => {
     const id = 'dl-' + key + Math.random().toString(36).slice(2, 6);
-    return [h('input', { type: 'text', list: id, value: b[key] || '', placeholder: ph || '', autocomplete: 'off', oninput: (e) => { b[key] = e.target.value; } }),
+    return [h('input', { type: 'text', list: id, value: b[key] || '', placeholder: ph || '', autocomplete: 'off', oninput: (e) => touch(key, e.target.value) }),
       h('datalist', { id }, options.map((o) => h('option', { value: o })))];
   };
   const [varietyInput, varietyList] = listInput('variety', VARIETIES, 'Gesha, SL28, Bourbon…');
@@ -34,6 +53,8 @@ export function buildBeanForm(bean, { onSave, onCancel }) {
       b.name = b.name.trim(); b.roaster = b.roaster.trim();
       b.altitude = b.altitude === '' ? '' : Number(b.altitude) || '';
       const saved = await D.saveBean(b);
+      finished = true;
+      clearBeanDraft();
       onSave(saved);
     },
   },
@@ -43,27 +64,32 @@ export function buildBeanForm(bean, { onSave, onCancel }) {
       field('Country', text('country', 'Ethiopia')),
       field('Region / farm', text('region', 'Guji, Hambela'))),
     h('div', { class: 'grid2' },
-      field('Species', selectEl(SPECIES.map((v) => ({ value: v, label: v })), b.species, (v) => { b.species = v; })),
+      field('Species', selectEl(SPECIES.map((v) => ({ value: v, label: v })), b.species, (v) => touch('species', v))),
       field('Variety', varietyInput)),
     varietyList,
     field('Process', processInput), processList,
     h('div', { class: 'grid2' },
-      field('Roast level', selectEl([{ value: '', label: 'Not set' }, ...ROAST_LEVELS.map((v) => ({ value: v, label: v }))], b.roastLevel, (v) => { b.roastLevel = v; })),
-      field('Roasted for', selectEl([{ value: '', label: 'Not set' }, ...ROAST_FOR.map((v) => ({ value: v, label: v }))], b.roastFor, (v) => { b.roastFor = v; }))),
+      field('Roast level', selectEl([{ value: '', label: 'Not set' }, ...ROAST_LEVELS.map((v) => ({ value: v, label: v }))], b.roastLevel, (v) => touch('roastLevel', v))),
+      field('Roasted for', selectEl([{ value: '', label: 'Not set' }, ...ROAST_FOR.map((v) => ({ value: v, label: v }))], b.roastFor, (v) => touch('roastFor', v)))),
     h('div', { class: 'grid2' },
-      field('Roast date', h('input', { type: 'date', value: b.roastDate || '', onchange: (e) => { b.roastDate = e.target.value; } })),
-      field('Altitude (masl)', h('input', { type: 'number', inputmode: 'numeric', value: b.altitude ?? '', oninput: (e) => { b.altitude = e.target.value; } }))),
-    field('Roaster’s tasting notes', h('textarea', { rows: 2, placeholder: 'What the bag says', oninput: (e) => { b.roasterNotes = e.target.value; } }, b.roasterNotes || '')),
-    field('Your notes', h('textarea', { rows: 2, oninput: (e) => { b.notes = e.target.value; } }, b.notes || '')),
+      field('Roast date', h('input', { type: 'date', value: b.roastDate || '', onchange: (e) => touch('roastDate', e.target.value) })),
+      field('Altitude (masl)', h('input', { type: 'number', inputmode: 'numeric', value: b.altitude ?? '', oninput: (e) => touch('altitude', e.target.value) }))),
+    field('Roaster’s tasting notes', h('textarea', { rows: 2, placeholder: 'What the bag says', oninput: (e) => touch('roasterNotes', e.target.value) }, b.roasterNotes || '')),
+    field('Your notes', h('textarea', { rows: 2, oninput: (e) => touch('notes', e.target.value) }, b.notes || '')),
     h('div', { class: 'row-actions' },
       btn('Cancel', onCancel, 'ghost'),
       h('button', { type: 'submit', class: 'btn primary' }, 'Save bean')));
-  return form;
+  return { form, restored, flush: () => { if (useDraft && !finished) saveBeanDraft(b); } };
 }
 
 export function beanFormSheet(bean, onSaved) {
-  const form = buildBeanForm(bean, { onSave: (saved) => { sheet.close(); if (onSaved) onSaved(saved); }, onCancel: () => sheet.close() });
-  const sheet = openSheet({ title: bean ? 'Edit bean' : 'New bean', content: form, tall: true });
+  const { form, restored, flush } = buildBeanForm(bean, {
+    onSave: (saved) => { sheet.close(); if (onSaved) onSaved(saved); },
+    onCancel: () => sheet.close(),
+    useDraft: !bean,
+  });
+  const sheet = openSheet({ title: bean ? 'Edit bean' : 'New bean', content: form, tall: true, onClose: flush });
+  if (restored) toast('Restored your unsaved bean');
   return sheet;
 }
 
@@ -104,11 +130,28 @@ function lb_fallback(b) { return b.createdAt || ''; }
 export async function beanFormView({ id }) {
   const bean = id ? D.beanById(id) : null;
   if (id && !bean) return notFound('Bean not found');
-  const form = buildBeanForm(bean, {
-    onSave: (saved) => { toast('Bean saved'); replace('/bean/' + saved.id); },
-    onCancel: () => { history.length > 1 ? history.back() : navigate('/beans'); },
-  });
-  return { title: bean ? 'Edit bean' : 'New bean', back: bean ? '#/bean/' + bean.id : '#/beans', hideNav: true, nav: 'beans', el: form };
+  const wrap = h('div', { class: 'stack' });
+  let flush = () => {};
+
+  function build() {
+    const built = buildBeanForm(bean, {
+      onSave: (saved) => { toast('Bean saved'); replace('/bean/' + saved.id); },
+      onCancel: () => { history.length > 1 ? history.back() : navigate('/beans'); },
+      useDraft: !bean,
+    });
+    flush = built.flush;
+    wrap.replaceChildren(
+      built.restored ? h('div', { class: 'banner' },
+        h('span', null, 'Restored your unsaved bean.'),
+        btn('Start fresh', () => { clearBeanDraft(); build(); }, 'small')) : null,
+      built.form);
+  }
+  build();
+
+  return {
+    title: bean ? 'Edit bean' : 'New bean', back: bean ? '#/bean/' + bean.id : '#/beans', hideNav: true, nav: 'beans', el: wrap,
+    cleanup() { flush(); },
+  };
 }
 
 function notFound(msg) {
