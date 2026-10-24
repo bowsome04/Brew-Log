@@ -104,8 +104,17 @@ export const byDateDesc = (a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 
 
 export function brewsSorted() { return [...store.brews].sort(byDateDesc); }
 
+// Ice melts into the final cup, so a Japanese iced brew's ratio is dose
+// against water *plus* ice (on the bed and in the server), not just the
+// hot water poured through the grounds.
+export function totalWater(b) {
+  const ice = b.brewStyle === 'iced' ? (b.iceBedG || 0) + (b.iceG || 0) : 0;
+  const w = (b.water || 0) + ice;
+  return w > 0 ? w : null;
+}
+
 export function recipeRatio(b) {
-  return ratioOf(b.dose, b.water);
+  return ratioOf(b.dose, totalWater(b));
 }
 
 export function daysOff(b) {
@@ -197,7 +206,7 @@ export function brewsToCsv() {
   const rows = brewsSorted().map((b) => {
     const bean = beanById(b.beanId) || {};
     const g = grinderById(b.grinderId);
-    const r = ratioOf(b.dose, b.water);
+    const r = recipeRatio(b);
     return [
       b.date, bean.name, bean.roaster, bean.country, bean.variety, bean.process, bean.roastLevel, bean.roastDate, daysOff(b),
       b.method, b.brewStyle === 'iced' ? 'Iced' : 'Hot', b.brewStyle === 'iced' ? b.iceBedG : '', b.brewStyle === 'iced' ? b.iceG : '',

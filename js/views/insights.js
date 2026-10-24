@@ -1,4 +1,4 @@
-import { h, field, selectEl, chip, mean, minmax, fmtNum, fmtTime, fmtRatio, ratioOf, fmtDateTime } from '../util.js';
+import { h, field, selectEl, chip, mean, minmax, fmtNum, fmtTime, fmtRatio, fmtDateTime } from '../util.js';
 import * as D from '../data.js';
 import { createWheel } from '../wheel.js';
 import { scatter, verdictLegend, bars } from '../charts.js';
@@ -110,7 +110,7 @@ function recipeByFlavour(brews) {
       h('th', { scope: 'row' }, h('i', { class: 'dot', style: { background: CATEGORY_COLOR[c] } }), c),
       h('td', null, String(withL.length)),
       cell(withL, withoutL, (b) => b.temp, 1),
-      cell(withL, withoutL, (b) => ratioOf(b.dose, b.water), 1),
+      cell(withL, withoutL, (b) => D.recipeRatio(b), 1),
       cell(withL, withoutL, (b) => b.totalTime, 0));
   });
   return h('div', { class: 'card' },
@@ -141,7 +141,7 @@ function xValue(b, key) {
   switch (key) {
     case 'clicks': return b.clicks;
     case 'temp': return b.temp;
-    case 'ratio': return ratioOf(b.dose, b.water);
+    case 'ratio': return D.recipeRatio(b);
     case 'time': return b.totalTime;
     case 'days': return D.daysOff(b);
     case 'dose': return b.dose;
@@ -276,7 +276,7 @@ function patternsTab() {
     const params = [
       { label: 'Coffee (g)', f: (b) => b.dose, dec: 1 },
       { label: 'Water / yield (g)', f: (b) => b.water, dec: 0 },
-      { label: 'Ratio (1:x)', f: (b) => ratioOf(b.dose, b.water), dec: 1 },
+      { label: 'Ratio (1:x)', f: (b) => D.recipeRatio(b), dec: 1 },
       { label: 'Temp (°C)', f: (b) => b.temp, dec: 1 },
       p.grinderId ? { label: `Setting (${unit})`, f: (b) => (b.grinderId === p.grinderId ? b.clicks : null), dec: 1 } : null,
       { label: 'Bloom time (s)', f: (b) => b.bloomTime, dec: 0 },

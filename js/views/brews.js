@@ -1,6 +1,6 @@
 import {
   h, field, selectEl, segmented, chip, btn, toast, confirmSheet, debounce, num,
-  fmtNum, fmtTime, fmtRatio, ratioOf, fmtDateTime, toLocalInput, fromLocalInput,
+  fmtNum, fmtTime, fmtRatio, fmtDateTime, toLocalInput, fromLocalInput,
 } from '../util.js';
 import * as D from '../data.js';
 import { navigate, replace } from '../router.js';
@@ -20,7 +20,7 @@ export function grinderText(b) {
 
 export function recipeSummary(b) {
   const kind = D.methodKind(b.method);
-  const r = ratioOf(b.dose, b.water);
+  const r = D.recipeRatio(b);
   const bits = [];
   if (b.brewStyle === 'iced') {
     const ice = [b.iceBedG ? fmtNum(b.iceBedG, 0) + 'g bed' : null, b.iceG ? fmtNum(b.iceG, 0) + 'g server' : null].filter(Boolean);
@@ -140,7 +140,7 @@ export async function brewDetailView({ id }) {
   const kind = D.methodKind(b.method);
   const root = h('div', { class: 'stack' });
   const age = D.daysOff(b);
-  const r = ratioOf(b.dose, b.water);
+  const r = D.recipeRatio(b);
 
   root.appendChild(h('div', { class: 'card' },
     h('div', { class: 'card-head' },
@@ -283,7 +283,7 @@ export async function brewFormView(params) {
     if (!derivedEl) return;
     const kind = D.methodKind(b.method);
     const bits = [];
-    const r = ratioOf(b.dose, b.water);
+    const r = D.recipeRatio(b);
     if (r) bits.push('Ratio ' + fmtRatio(r));
     if (kind === 'espresso') {
       if (b.water && b.totalTime) bits.push('Flow ' + fmtNum(b.water / b.totalTime, 1) + ' g/s');
@@ -595,7 +595,7 @@ export async function compareView(params) {
     { label: 'Method', get: (x) => x.method },
     { label: 'Coffee (g)', get: (x) => x.dose, num: 1 },
     { label: 'Water / yield (g)', get: (x) => x.water, num: 1 },
-    { label: 'Ratio', get: (x) => { const r = ratioOf(x.dose, x.water); return r ? Math.round(r * 10) / 10 : null; }, num: 1, fmt: (v) => fmtRatio(v) },
+    { label: 'Ratio', get: (x) => { const r = D.recipeRatio(x); return r ? Math.round(r * 10) / 10 : null; }, num: 1, fmt: (v) => fmtRatio(v) },
     { label: 'Temp (°C)', get: (x) => x.temp, num: 1 },
     { label: 'Grinder', get: (x) => (D.grinderById(x.grinderId) || {}).name },
     { label: 'Setting', get: (x) => x.clicks, num: 1 },
