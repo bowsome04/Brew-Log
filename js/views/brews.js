@@ -262,29 +262,20 @@ export async function brewFormView(params) {
   let timerDisplay = null;
   let totalTimeInput = null;
   let totalTimeHint = null;
-  let totalDisplay = null;
   let totalAuto = b.totalTime == null; // only auto-sum while it hasn't been set by hand or by the timer
 
-  // Percolation (hot or iced): total brew time is just "pouring done at" -
-  // bloom start to pouring done, read-only, nothing left to type. Hybrid has
-  // no drawdown mark, so it keeps summing from bloom time and any pours.
-  // Both stop once the timer measures a real total instead.
+  // Hybrid has no separate drawdown mark, so its total still sums from bloom
+  // time and any pours while untouched. Percolation's total is typed in
+  // directly (minSecField below); stops once the timer measures a real one.
   function autoSumTotal() {
     if (!totalAuto) return;
     const kind = D.methodKind(b.method);
-    if (kind === 'percolation') {
-      if (b.drawStart != null && b.drawStart !== b.totalTime) {
-        b.totalTime = b.drawStart; persist();
-        if (totalDisplay) totalDisplay.textContent = fmtTime(b.totalTime);
-        refreshDerived();
-      }
-    } else if (kind === 'hybrid') {
-      const last = Math.max(b.bloomTime || 0, ...b.pours.map((p) => p.t || 0));
-      if (last > 0 && last !== b.totalTime) {
-        b.totalTime = last; persist();
-        if (totalTimeInput) { totalTimeInput.value = last; totalTimeHint.textContent = '= ' + fmtTime(last); }
-        refreshDerived();
-      }
+    if (kind !== 'hybrid') return;
+    const last = Math.max(b.bloomTime || 0, ...b.pours.map((p) => p.t || 0));
+    if (last > 0 && last !== b.totalTime) {
+      b.totalTime = last; persist();
+      if (totalTimeInput) { totalTimeInput.value = last; totalTimeHint.textContent = '= ' + fmtTime(last); }
+      refreshDerived();
     }
   }
 
@@ -341,6 +332,7 @@ export async function brewFormView(params) {
       update(key, v);
       hint.textContent = '= ' + fmtTime(v);
       refreshDerived();
+      if (key === 'totalTime') totalAuto = false; // set by hand now, stop overwriting it
       if (opts.onInput) opts.onInput();
     };
     const minSel = selectEl(
@@ -355,13 +347,6 @@ export async function brewFormView(params) {
     const f = field(label, row);
     f.appendChild(hint);
     return f;
-  }
-
-  function totalTimeReadout() {
-    totalDisplay = h('span', { class: 'readout-val' }, b.totalTime != null ? fmtTime(b.totalTime) : '–');
-    return h('div', { class: 'field' },
-      h('span', { class: 'lbl' }, 'Total brew time'),
-      h('div', { class: 'readout' }, totalDisplay, h('span', { class: 'hint' }, 'Bloom start to pouring done')));
   }
 
   // ----- setup
@@ -487,8 +472,7 @@ export async function brewFormView(params) {
         : poursEl);
     }
     if (kind === 'percolation') {
-      parts.push(minSecField('Pouring done at', 'drawStart', { onInput: autoSumTotal }));
-      parts.push(totalTimeReadout());
+      parts.push(minSecField('Total brew time', 'totalTime'));
     } else if (kind === 'hybrid') {
       parts.push(timeField('Total time (s)', 'totalTime'));
     } else if (kind === 'immersion') {
@@ -538,11 +522,10 @@ export async function brewFormView(params) {
       if (kind === 'percolation' || kind === 'hybrid') {
         controls.push(btn('Bloom done', () => { update('bloomTime', nowSec()); renderRecipe(); toast('Bloom ' + fmtTime(nowSec())); }, 'small'));
         controls.push(btn('+ Pour', () => { b.pours.push({ t: nowSec(), g: null }); persist(); renderRecipe(); toast('Pour at ' + fmtTime(nowSec())); }, 'small'));
-        if (kind === 'percolation') controls.push(btn('Pouring done', () => { update('drawStart', nowSec()); autoSumTotal(); renderRecipe(); toast('Pouring done at ' + fmtTime(nowSec())); }, 'small'));
       }
       controls.push(btn('Stop', stopTimer, 'danger big'));
     }
-    const hint = { percolation: 'Marks fill in bloom time, pours and drawdown. Stop sets total time.', hybrid: 'Stop sets total time.', immersion: 'Stop sets steep time.', espresso: 'Stop sets shot time.' }[kind];
+    const hint = { percolation: 'Marks fill in bloom time and pours. Stop sets total time.', hybrid: 'Stop sets total time.', immersion: 'Stop sets steep time.', espresso: 'Stop sets shot time.' }[kind];
     secTimer.replaceChildren(h('h2', null, 'Timer'), timerDisplay, h('div', { class: 'timer-controls' }, controls), h('p', { class: 'small muted' }, hint));
   }
   const tick = setInterval(() => { if (timerDisplay && timer.running) timerDisplay.textContent = fmtTime(elapsedMs() / 1000); }, 250);
