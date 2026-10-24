@@ -140,11 +140,14 @@ export async function beanFormView({ id }) {
       useDraft: !bean,
     });
     flush = built.flush;
-    wrap.replaceChildren(
-      built.restored ? h('div', { class: 'banner' },
+    const children = [];
+    if (built.restored) {
+      children.push(h('div', { class: 'banner' },
         h('span', null, 'Restored your unsaved bean.'),
-        btn('Start fresh', () => { clearBeanDraft(); build(); }, 'small')) : null,
-      built.form);
+        btn('Start fresh', () => { clearBeanDraft(); build(); }, 'small')));
+    }
+    children.push(built.form);
+    wrap.replaceChildren(...children);
   }
   build();
 
