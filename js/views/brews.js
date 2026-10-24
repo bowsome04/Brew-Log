@@ -394,22 +394,48 @@ export async function brewFormView(params) {
   // ----- recipe
   function poursBlock() {
     const wrap = h('div', { class: 'pours' });
+    // p.t stays the absolute elapsed time each pour finishes (matches the
+    // detail view, CSV and any already-saved brews), but the box people type
+    // into is that pour's own duration - the gap since the previous mark.
+    // Editing an earlier pour's duration shifts every later p.t by the same
+    // amount, so later pours keep the duration they were each given.
+    const boundaryBefore = (i) => (i === 0 ? (b.bloomTime || 0) : (b.pours[i - 1].t ?? 0));
+    let hintEls = []; // one per row, kept in sync without rebuilding inputs (would steal focus mid-type)
+    const refreshHints = () => {
+      hintEls.forEach((el, i) => {
+        const p = b.pours[i];
+        el.textContent = p.t != null ? `${fmtTime(boundaryBefore(i))} → ${fmtTime(p.t)}` : '';
+      });
+    };
     const paint = () => {
+      hintEls = [];
       const rows = b.pours.map((p, i) => {
-        const atHint = h('div', { class: 'hint' }, p.t != null ? '= ' + fmtTime(p.t) : '');
-        const atInput = h('input', {
-          type: 'number', inputmode: 'numeric', 'aria-label': `Pour ${i + 1} start, seconds`, placeholder: 'at (s)', value: p.t ?? '',
-          oninput: (e) => { p.t = num(e.target.value); atHint.textContent = p.t != null ? '= ' + fmtTime(p.t) : ''; persist(); autoSumTotal(); },
+        const prevB = boundaryBefore(i);
+        const dur = p.t != null ? p.t - prevB : null;
+        const rangeHint = h('div', { class: 'hint' }, p.t != null ? `${fmtTime(prevB)} → ${fmtTime(p.t)}` : '');
+        hintEls.push(rangeHint);
+        const durInput = h('input', {
+          type: 'number', inputmode: 'numeric', 'aria-label': `Pour ${i + 1} duration, seconds`, placeholder: 'duration (s)', value: dur ?? '',
+          oninput: (e) => {
+            const newDur = num(e.target.value);
+            const prevBNow = boundaryBefore(i);
+            const newT = prevBNow + (newDur || 0);
+            const delta = p.t != null ? newT - p.t : 0;
+            p.t = newT;
+            if (delta) for (let j = i + 1; j < b.pours.length; j++) if (b.pours[j].t != null) b.pours[j].t += delta;
+            refreshHints();
+            persist(); autoSumTotal();
+          },
         });
         return h('div', { class: 'pour-row' },
           h('span', { class: 'pour-n' }, '#' + (i + 1)),
-          h('div', { class: 'pour-at' }, atInput, atHint),
+          h('div', { class: 'pour-at' }, durInput, rangeHint),
           h('input', { type: 'number', inputmode: 'decimal', 'aria-label': `Pour ${i + 1} water, grams`, placeholder: 'water (g)', value: p.g ?? '', oninput: (e) => { p.g = num(e.target.value); persist(); refreshDerived(); } }),
           h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Remove pour ${i + 1}`, onclick: () => { b.pours.splice(i, 1); persist(); paint(); refreshDerived(); } }, '×'));
       });
       wrap.replaceChildren(...rows, btn('+ Add pour', () => {
-        const last = b.pours[b.pours.length - 1];
-        b.pours.push({ t: last && last.t != null ? last.t + 30 : (b.bloomTime || 45), g: null });
+        const prevB = b.pours.length ? b.pours[b.pours.length - 1].t ?? 0 : (b.bloomTime || 0);
+        b.pours.push({ t: prevB + 30, g: null });
         persist(); paint(); autoSumTotal();
       }, 'small ghost'));
     };
