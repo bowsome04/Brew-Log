@@ -262,19 +262,29 @@ export async function brewFormView(params) {
   let timerDisplay = null;
   let totalTimeInput = null;
   let totalTimeHint = null;
-  let totalAuto = b.totalTime == null; // only auto-sum while the field hasn't been set by hand or by the timer
+  let totalDisplay = null;
+  let totalAuto = b.totalTime == null; // only auto-sum while it hasn't been set by hand or by the timer
 
-  // Total time = drawdown mark or last pour, whichever is later: saves retyping
-  // what the pour log already says. Stops once the field is edited directly.
+  // Percolation (hot or iced): total brew time is just "pouring done at" -
+  // bloom start to pouring done, read-only, nothing left to type. Hybrid has
+  // no drawdown mark, so it keeps summing from bloom time and any pours.
+  // Both stop once the timer measures a real total instead.
   function autoSumTotal() {
     if (!totalAuto) return;
     const kind = D.methodKind(b.method);
-    if (kind !== 'percolation' && kind !== 'hybrid') return;
-    const last = Math.max(b.bloomTime || 0, b.drawStart || 0, ...b.pours.map((p) => p.t || 0));
-    if (last > 0 && last !== b.totalTime) {
-      b.totalTime = last; persist();
-      if (totalTimeInput) { totalTimeInput.value = last; totalTimeHint.textContent = '= ' + fmtTime(last); }
-      refreshDerived();
+    if (kind === 'percolation') {
+      if (b.drawStart != null && b.drawStart !== b.totalTime) {
+        b.totalTime = b.drawStart; persist();
+        if (totalDisplay) totalDisplay.textContent = fmtTime(b.totalTime);
+        refreshDerived();
+      }
+    } else if (kind === 'hybrid') {
+      const last = Math.max(b.bloomTime || 0, ...b.pours.map((p) => p.t || 0));
+      if (last > 0 && last !== b.totalTime) {
+        b.totalTime = last; persist();
+        if (totalTimeInput) { totalTimeInput.value = last; totalTimeHint.textContent = '= ' + fmtTime(last); }
+        refreshDerived();
+      }
     }
   }
 
@@ -318,6 +328,40 @@ export async function brewFormView(params) {
     f.appendChild(hint);
     if (key === 'totalTime') { totalTimeInput = input; totalTimeHint = hint; }
     return f;
+  }
+
+  // Minutes/seconds picker (two native scroll wheels on phones) in place of
+  // a raw seconds box, for a field people think of as "m:ss" like a stopwatch.
+  function minSecField(label, key, opts = {}) {
+    const maxMin = opts.maxMin ?? 5;
+    const cur = b[key];
+    const hint = h('div', { class: 'hint' }, cur != null ? '= ' + fmtTime(cur) : '');
+    const commit = () => {
+      const v = Number(minSel.value) * 60 + Number(secSel.value);
+      update(key, v);
+      hint.textContent = '= ' + fmtTime(v);
+      refreshDerived();
+      if (opts.onInput) opts.onInput();
+    };
+    const minSel = selectEl(
+      Array.from({ length: maxMin + 1 }, (_, i) => ({ value: i, label: String(i) })),
+      cur != null ? Math.floor(cur / 60) : 0, commit);
+    const secSel = selectEl(
+      Array.from({ length: 60 }, (_, i) => ({ value: i, label: String(i).padStart(2, '0') })),
+      cur != null ? cur % 60 : 0, commit);
+    const row = h('div', { class: 'minsec' },
+      h('div', { class: 'minsec-col' }, minSel, h('span', { class: 'minsec-lbl' }, 'min')),
+      h('div', { class: 'minsec-col' }, secSel, h('span', { class: 'minsec-lbl' }, 'sec')));
+    const f = field(label, row);
+    f.appendChild(hint);
+    return f;
+  }
+
+  function totalTimeReadout() {
+    totalDisplay = h('span', { class: 'readout-val' }, b.totalTime != null ? fmtTime(b.totalTime) : '–');
+    return h('div', { class: 'field' },
+      h('span', { class: 'lbl' }, 'Total brew time'),
+      h('div', { class: 'readout' }, totalDisplay, h('span', { class: 'hint' }, 'Bloom start to pouring done')));
   }
 
   // ----- setup
@@ -443,7 +487,8 @@ export async function brewFormView(params) {
         : poursEl);
     }
     if (kind === 'percolation') {
-      parts.push(h('div', { class: 'grid2' }, timeField('Pouring done at (s)', 'drawStart', { onInput: autoSumTotal }), timeField('Total brew time (s)', 'totalTime')));
+      parts.push(minSecField('Pouring done at', 'drawStart', { onInput: autoSumTotal }));
+      parts.push(totalTimeReadout());
     } else if (kind === 'hybrid') {
       parts.push(timeField('Total time (s)', 'totalTime'));
     } else if (kind === 'immersion') {
@@ -493,7 +538,7 @@ export async function brewFormView(params) {
       if (kind === 'percolation' || kind === 'hybrid') {
         controls.push(btn('Bloom done', () => { update('bloomTime', nowSec()); renderRecipe(); toast('Bloom ' + fmtTime(nowSec())); }, 'small'));
         controls.push(btn('+ Pour', () => { b.pours.push({ t: nowSec(), g: null }); persist(); renderRecipe(); toast('Pour at ' + fmtTime(nowSec())); }, 'small'));
-        if (kind === 'percolation') controls.push(btn('Pouring done', () => { update('drawStart', nowSec()); renderRecipe(); toast('Pouring done at ' + fmtTime(nowSec())); }, 'small'));
+        if (kind === 'percolation') controls.push(btn('Pouring done', () => { update('drawStart', nowSec()); autoSumTotal(); renderRecipe(); toast('Pouring done at ' + fmtTime(nowSec())); }, 'small'));
       }
       controls.push(btn('Stop', stopTimer, 'danger big'));
     }
