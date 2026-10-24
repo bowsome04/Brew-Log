@@ -22,6 +22,7 @@ export function recipeSummary(b) {
   const kind = D.methodKind(b.method);
   const r = ratioOf(b.dose, b.water);
   const bits = [];
+  if (b.brewStyle === 'iced') bits.push('Iced' + (b.iceG ? ' (' + fmtNum(b.iceG, 0) + 'g ice)' : ''));
   if (b.dose || b.water) {
     bits.push(kind === 'espresso'
       ? `${fmtNum(b.dose)} g in → ${fmtNum(b.water)} g out${r ? ' (' + fmtRatio(r) + ')' : ''}`
@@ -150,6 +151,8 @@ export async function brewDetailView({ id }) {
   root.appendChild(h('div', { class: 'card' },
     h('h3', null, 'Recipe'),
     kv([
+      ['Brew style', kind === 'percolation' ? BREW_STYLE_LABEL[b.brewStyle || 'hot'] : ''],
+      ['Ice', b.brewStyle === 'iced' && b.iceG != null ? fmtNum(b.iceG, 0) + ' g' : ''],
       [kind === 'espresso' ? 'Dose in' : 'Coffee', b.dose != null ? fmtNum(b.dose) + ' g' : ''],
       [kind === 'espresso' ? 'Yield out' : 'Water', b.water != null ? fmtNum(b.water) + ' g' : ''],
       ['Ratio', r ? fmtRatio(r) : ''],
@@ -193,8 +196,9 @@ export async function brewDetailView({ id }) {
 
 // ---------------------------------------------------------------- form
 
-const RECIPE_KEYS = ['dose', 'water', 'temp', 'grinderId', 'clicks', 'grindFeel', 'bloomWater', 'bloomTime', 'pours', 'totalTime', 'drawStart', 'preinfusion', 'pressure', 'procedure'];
-const RECIPE_DEFAULT = { grinderId: '', grindFeel: '', procedure: '', pours: [] };
+const RECIPE_KEYS = ['dose', 'water', 'temp', 'grinderId', 'clicks', 'grindFeel', 'brewStyle', 'iceG', 'bloomWater', 'bloomTime', 'pours', 'totalTime', 'drawStart', 'preinfusion', 'pressure', 'procedure'];
+const RECIPE_DEFAULT = { grinderId: '', grindFeel: '', brewStyle: 'hot', procedure: '', pours: [] };
+const BREW_STYLE_LABEL = { hot: 'Hot', iced: 'Japanese (iced)' };
 const BAL_SHORT = ['Sour', 'Mild sour', 'Balanced', 'Mild bitter', 'Bitter'];
 const STR_SHORT = ['Weak', 'Light', 'Just right', 'Rich', 'Strong'];
 const DRAFT_KEY = 'bl.draft';
@@ -210,6 +214,7 @@ function blankBrew(beanId) {
     id: null, date: new Date().toISOString(),
     beanId: beanId || (last ? last.beanId : ''), method: last ? last.method : 'V60',
     dose: null, water: null, temp: null, grinderId: last ? last.grinderId : '', clicks: null, grindFeel: '',
+    brewStyle: 'hot', iceG: null,
     bloomWater: null, bloomTime: null, pours: [], totalTime: null, drawStart: null, preinfusion: null, pressure: null,
     procedure: '', rating: null, verdict: '', balance: null, strength: null, taste: [], notes: '',
   };
@@ -251,6 +256,23 @@ export async function brewFormView(params) {
   const secResult = h('section', { class: 'card' });
   let derivedEl = null;
   let timerDisplay = null;
+  let totalTimeInput = null;
+  let totalTimeHint = null;
+  let totalAuto = b.totalTime == null; // only auto-sum while the field hasn't been set by hand or by the timer
+
+  // Total time = drawdown mark or last pour, whichever is later: saves retyping
+  // what the pour log already says. Stops once the field is edited directly.
+  function autoSumTotal() {
+    if (!totalAuto) return;
+    const kind = D.methodKind(b.method);
+    if (kind !== 'percolation' && kind !== 'hybrid') return;
+    const last = Math.max(b.bloomTime || 0, b.drawStart || 0, ...b.pours.map((p) => p.t || 0));
+    if (last > 0 && last !== b.totalTime) {
+      b.totalTime = last; persist();
+      if (totalTimeInput) { totalTimeInput.value = last; totalTimeHint.textContent = '= ' + fmtTime(last); }
+      refreshDerived();
+    }
+  }
 
   // ----- derived readout
   function refreshDerived() {
@@ -278,14 +300,19 @@ export async function brewFormView(params) {
     });
     return field(label, input, opts.hint);
   }
-  function timeField(label, key) {
+  function timeField(label, key, opts = {}) {
     const hint = h('div', { class: 'hint' }, b[key] != null ? '= ' + fmtTime(b[key]) : '');
     const input = h('input', {
       type: 'number', inputmode: 'numeric', step: 1, min: 0, value: b[key] ?? '', placeholder: 'seconds',
-      oninput: (e) => { const v = num(e.target.value); update(key, v); hint.textContent = v != null ? '= ' + fmtTime(v) : ''; refreshDerived(); },
+      oninput: (e) => {
+        const v = num(e.target.value); update(key, v); hint.textContent = v != null ? '= ' + fmtTime(v) : ''; refreshDerived();
+        if (key === 'totalTime') totalAuto = false; // typed by hand now, stop overwriting it
+        if (opts.onInput) opts.onInput();
+      },
     });
     const f = field(label, input);
     f.appendChild(hint);
+    if (key === 'totalTime') { totalTimeInput = input; totalTimeHint = hint; }
     return f;
   }
 
@@ -335,15 +362,22 @@ export async function brewFormView(params) {
   function poursBlock() {
     const wrap = h('div', { class: 'pours' });
     const paint = () => {
-      const rows = b.pours.map((p, i) => h('div', { class: 'pour-row' },
-        h('span', { class: 'pour-n' }, '#' + (i + 1)),
-        h('input', { type: 'number', inputmode: 'numeric', 'aria-label': `Pour ${i + 1} start, seconds`, placeholder: 'at (s)', value: p.t ?? '', oninput: (e) => { p.t = num(e.target.value); persist(); } }),
-        h('input', { type: 'number', inputmode: 'decimal', 'aria-label': `Pour ${i + 1} water, grams`, placeholder: 'water (g)', value: p.g ?? '', oninput: (e) => { p.g = num(e.target.value); persist(); refreshDerived(); } }),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Remove pour ${i + 1}`, onclick: () => { b.pours.splice(i, 1); persist(); paint(); refreshDerived(); } }, '×')));
+      const rows = b.pours.map((p, i) => {
+        const atHint = h('div', { class: 'hint' }, p.t != null ? '= ' + fmtTime(p.t) : '');
+        const atInput = h('input', {
+          type: 'number', inputmode: 'numeric', 'aria-label': `Pour ${i + 1} start, seconds`, placeholder: 'at (s)', value: p.t ?? '',
+          oninput: (e) => { p.t = num(e.target.value); atHint.textContent = p.t != null ? '= ' + fmtTime(p.t) : ''; persist(); autoSumTotal(); },
+        });
+        return h('div', { class: 'pour-row' },
+          h('span', { class: 'pour-n' }, '#' + (i + 1)),
+          h('div', { class: 'pour-at' }, atInput, atHint),
+          h('input', { type: 'number', inputmode: 'decimal', 'aria-label': `Pour ${i + 1} water, grams`, placeholder: 'water (g)', value: p.g ?? '', oninput: (e) => { p.g = num(e.target.value); persist(); refreshDerived(); } }),
+          h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Remove pour ${i + 1}`, onclick: () => { b.pours.splice(i, 1); persist(); paint(); refreshDerived(); } }, '×'));
+      });
       wrap.replaceChildren(...rows, btn('+ Add pour', () => {
         const last = b.pours[b.pours.length - 1];
         b.pours.push({ t: last && last.t != null ? last.t + 30 : (b.bloomTime || 45), g: null });
-        persist(); paint();
+        persist(); paint(); autoSumTotal();
       }, 'small ghost'));
     };
     paint();
@@ -372,6 +406,16 @@ export async function brewFormView(params) {
 
     const parts = [
       h('h2', null, 'Recipe'),
+    ];
+    if (kind === 'percolation') {
+      parts.push(field('Brew style', segmented(
+        [{ value: 'hot', label: 'Hot' }, { value: 'iced', label: 'Japanese (iced)' }],
+        b.brewStyle || 'hot', (v) => { update('brewStyle', v || 'hot'); renderRecipe(); }, 'Hot or Japanese iced brew')));
+      if (b.brewStyle === 'iced') {
+        parts.push(numField('Ice in server (g)', 'iceG', { step: 1, hint: 'Weighed into the server before or during the pour' }));
+      }
+    }
+    parts.push(
       h('div', { class: 'grid2' },
         numField(espresso ? 'Dose in (g)' : 'Coffee (g)', 'dose', { step: 0.1 }),
         numField(espresso ? 'Yield out (g)' : 'Water (g)', 'water', { step: espresso ? 0.1 : 1 })),
@@ -381,19 +425,19 @@ export async function brewFormView(params) {
       h('div', { class: 'grid2' },
         numField(`Setting (${unit})`, 'clicks', { step: 0.5, hint: 'Count from your grinder’s zero point' }),
         field('Grind feel', feelSel)),
-    ];
+    );
 
     if (kind === 'percolation' || kind === 'hybrid') {
       parts.push(h('div', { class: 'grid2' },
         numField(kind === 'hybrid' ? 'Bloom / pre-wet (g)' : 'Bloom water (g)', 'bloomWater', { step: 1 }),
-        timeField('Bloom time (s)', 'bloomTime')));
+        timeField('Bloom time (s)', 'bloomTime', { onInput: autoSumTotal })));
       const poursEl = h('div', null, h('span', { class: 'lbl' }, kind === 'hybrid' ? 'Pour steps (optional)' : 'Pours after the bloom'), poursBlock());
       parts.push(kind === 'hybrid'
         ? h('details', { class: 'more', open: b.pours.length > 0 }, h('summary', null, 'Pour steps (optional)'), poursBlock())
         : poursEl);
     }
     if (kind === 'percolation') {
-      parts.push(h('div', { class: 'grid2' }, timeField('Pouring done at (s)', 'drawStart'), timeField('Total brew time (s)', 'totalTime')));
+      parts.push(h('div', { class: 'grid2' }, timeField('Pouring done at (s)', 'drawStart', { onInput: autoSumTotal }), timeField('Total brew time (s)', 'totalTime')));
     } else if (kind === 'hybrid') {
       parts.push(timeField('Total time (s)', 'totalTime'));
     } else if (kind === 'immersion') {
@@ -426,6 +470,7 @@ export async function brewFormView(params) {
     timer.base = elapsedMs(); timer.running = false; timer.startedAt = null;
     releaseLock();
     update('totalTime', Math.round(timer.base / 1000));
+    totalAuto = false; // timer measured it, don't let a later pour edit override it
     saveDraft(b, timer); renderRecipe(); renderTimer();
   }
   const nowSec = () => Math.round(elapsedMs() / 1000);

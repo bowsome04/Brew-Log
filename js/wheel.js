@@ -223,6 +223,48 @@ export function createWheel({ mode = 'select', selected = new Set(), counts = ne
     svg.replaceChildren(...(cat ? zoomed(cat) : overview()));
   }
 
+  // Touch drag-select: hold and drag a finger across the wheel instead of
+  // tapping each level. Dragging into a category zooms into it, then
+  // dragging over its sub/leaf wedges selects them, all in one stroke.
+  // data-id-less elements (the centre "back" circle) are left to their own
+  // click handler, so this never blocks backing out.
+  if (mode === 'select') {
+    let dragId = null;
+    const hitNode = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      const id = el && el.getAttribute && el.getAttribute('data-id');
+      return id ? NODE.get(id) : null;
+    };
+    const hoverAt = (x, y) => {
+      const node = hitNode(x, y);
+      if (!node || node.id === dragId) return;
+      dragId = node.id;
+      if (!focus) {
+        if (node.cat !== focus) setFocus(node.cat);
+      } else if (node.cat === focus && node.level > 1 && !sel.has(node.id)) {
+        sel.add(node.id);
+        if (onChange) onChange(new Set(sel));
+        render();
+      }
+    };
+    svg.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      const node = hitNode(e.clientX, e.clientY);
+      if (!node) return;
+      e.preventDefault();
+      svg.setPointerCapture(e.pointerId);
+      dragId = null;
+      hoverAt(e.clientX, e.clientY);
+    });
+    svg.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse' || !e.buttons) return;
+      hoverAt(e.clientX, e.clientY);
+    });
+    const endDrag = () => { dragId = null; };
+    svg.addEventListener('pointerup', endDrag);
+    svg.addEventListener('pointercancel', endDrag);
+  }
+
   render();
   return {
     el: svg,

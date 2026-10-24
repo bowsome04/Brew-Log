@@ -184,6 +184,13 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && sheetStack.length) sheetStack[sheetStack.length - 1].close();
 });
 
+function lockBodyScroll() {
+  if (sheetStack.length === 1) document.body.classList.add('sheet-open');
+}
+function unlockBodyScroll() {
+  if (!sheetStack.length) document.body.classList.remove('sheet-open');
+}
+
 export function openSheet({ title, content, onClose, tall = false }) {
   const backdrop = h('div', { class: 'sheet-backdrop' });
   const body = h('div', { class: 'sheet-body' }, content);
@@ -207,6 +214,7 @@ export function openSheet({ title, content, onClose, tall = false }) {
       done = true;
       const i = sheetStack.indexOf(api);
       if (i >= 0) sheetStack.splice(i, 1);
+      unlockBodyScroll();
       backdrop.remove();
       if (popHistory) {
         let settled = false;
@@ -219,6 +227,7 @@ export function openSheet({ title, content, onClose, tall = false }) {
     },
   };
   sheetStack.push(api);
+  lockBodyScroll();
   history.pushState({ sheet: true }, '');
   document.body.appendChild(backdrop);
   return api;

@@ -195,6 +195,8 @@ input[type="checkbox"] { width: 22px; min-height: 22px; height: 22px; accent-col
 /* pours + timer */
 .pours { display: grid; gap: 8px; margin-top: 6px; }
 .pour-row { display: grid; grid-template-columns: 28px 1fr 1fr 44px; gap: 8px; align-items: center; }
+.pour-at { display: grid; gap: 2px; }
+.pour-at .hint { font-size: 12px; }
 .pour-n { font-weight: 700; color: var(--muted); }
 .timer-display { font: 300 64px/1.1 var(--sans); text-align: center; letter-spacing: 0.02em; padding: 4px 0; }
 .timer-controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
@@ -273,7 +275,9 @@ input[type="checkbox"] { width: 22px; min-height: 22px; height: 22px; accent-col
 .wheel-detail h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 /* sheets + toasts */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 50; background: rgb(0 0 0 / 0.45); display: flex; align-items: flex-end; justify-content: center; }
+body.sheet-open { overflow: hidden; touch-action: none; overscroll-behavior: none; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 50; background: rgb(0 0 0 / 0.45); display: flex; align-items: flex-end; justify-content: center; touch-action: none; }
+.sheet { touch-action: pan-y; }
 .sheet {
   width: 100%; max-width: 640px; max-height: 90dvh; overflow: auto; background: var(--surface);
   border-radius: 20px 20px 0 0; padding: 0 16px calc(18px + env(safe-area-inset-bottom));
