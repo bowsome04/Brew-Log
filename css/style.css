@@ -265,7 +265,7 @@ input[type="checkbox"] { width: 22px; min-height: 22px; height: 22px; accent-col
 
 /* wheel */
 .wheel-wrap { background: var(--wheel-bg); border-radius: 18px; padding: 8px; }
-.wheel { width: 100%; max-width: 440px; height: auto; display: block; margin: 0 auto; }
+.wheel { width: 100%; max-width: 440px; height: auto; display: block; margin: 0 auto; touch-action: none; }
 .wedge { stroke: var(--wheel-bg); stroke-width: 1.5; cursor: pointer; }
 .wedge.on { stroke: #1f1a16; stroke-width: 3; }
 .wedge.armed, .cat-group.armed .wedge { stroke: #1f1a16; stroke-width: 2.5; stroke-dasharray: 3 2; }
