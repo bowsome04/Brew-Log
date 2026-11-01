@@ -41,6 +41,11 @@ export function methodKind(name) {
   const m = allMethods().find((x) => x.name === name);
   return m ? m.kind : 'percolation';
 }
+// Hot-vs-Japanese-iced applies to any pour-over method, plus Hario Switch -
+// it brews as a percolation pour-over before its valve closes into immersion.
+export function canIce(method) {
+  return methodKind(method) === 'percolation' || method === 'Hario Switch';
+}
 
 // ---------- load / CRUD ----------
 export async function loadAll() {

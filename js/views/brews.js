@@ -154,7 +154,7 @@ export async function brewDetailView({ id }) {
   root.appendChild(h('div', { class: 'card' },
     h('h3', null, 'Recipe'),
     kv([
-      ['Brew style', kind === 'percolation' ? BREW_STYLE_LABEL[b.brewStyle || 'hot'] : ''],
+      ['Brew style', D.canIce(b.method) ? BREW_STYLE_LABEL[b.brewStyle || 'hot'] : ''],
       ['Ice on bed', b.brewStyle === 'iced' && b.iceBedG != null ? fmtNum(b.iceBedG, 0) + ' g' : ''],
       ['Ice in server', b.brewStyle === 'iced' && b.iceG != null ? fmtNum(b.iceG, 0) + ' g' : ''],
       [kind === 'espresso' ? 'Dose in' : 'Coffee', b.dose != null ? fmtNum(b.dose) + ' g' : ''],
@@ -466,7 +466,7 @@ export async function brewFormView(params) {
     const parts = [
       h('h2', null, 'Recipe'),
     ];
-    if (kind === 'percolation') {
+    if (D.canIce(b.method)) {
       parts.push(field('Brew style', segmented(
         [{ value: 'hot', label: 'Hot' }, { value: 'iced', label: 'Japanese (iced)' }],
         b.brewStyle || 'hot', (v) => { update('brewStyle', v || 'hot'); renderRecipe(); }, 'Hot or Japanese iced brew')));
